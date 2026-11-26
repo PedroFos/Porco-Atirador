@@ -1,0 +1,135 @@
+name: Gerar APK
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Montar projeto Android
+        run: |
+          HTML=$(ls index.html 2>/dev/null || ls *.html | head -n 1)
+          echo "Usando $HTML"
+          A=android-build
+          mkdir -p $A/app/src/main/assets $A/app/src/main/java/com/porco/atirador $A/app/src/main/res/values $A/app/src/main/res/drawable
+          cp "$HTML" $A/app/src/main/assets/index.html
+          cat > $A/settings.gradle <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = "PorcoAtirador"
+          include ':app'
+          EOF
+          echo "plugins { id 'com.android.application' version '8.5.2' apply false }" > $A/build.gradle
+          printf 'org.gradle.jvmargs=-Xmx2048m\nandroid.useAndroidX=true\n' > $A/gradle.properties
+          cat > $A/app/build.gradle <<'EOF'
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'com.porco.atirador'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'com.porco.atirador'
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+          }
+          EOF
+          cat > $A/app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application android:label="Porco Atirador" android:icon="@drawable/ic_launcher"
+                  android:theme="@style/AppTheme" android:hardwareAccelerated="true">
+                  <activity android:name=".MainActivity" android:exported="true"
+                      android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          cat > $A/app/src/main/res/values/styles.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="android:Theme.Black.NoTitleBar.Fullscreen" />
+          </resources>
+          EOF
+          cat > $A/app/src/main/res/drawable/ic_launcher.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#171A33" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#F7A8BA" android:pathData="M54,22a32,30 0,1 0,0.1 0z"/>
+              <path android:fillColor="#D97893" android:pathData="M30,30l-8,-14l18,6z M78,30l8,-14l-18,6z"/>
+              <path android:fillColor="#D97893" android:pathData="M54,52a14,10 0,1 0,0.1 0z"/>
+              <path android:fillColor="#171A33" android:pathData="M48,58a3,4 0,1 0,0.1 0z M60,58a3,4 0,1 0,0.1 0z M40,40a4,4 0,1 0,0.1 0z M68,40a4,4 0,1 0,0.1 0z"/>
+              <path android:fillColor="#FFD54A" android:pathData="M84,70h14v6h-14z"/>
+          </vector>
+          EOF
+          cat > $A/app/src/main/java/com/porco/atirador/MainActivity.java <<'EOF'
+          package com.porco.atirador;
+          import android.app.Activity;
+          import android.graphics.Color;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.view.View;
+          import android.view.Window;
+          import android.view.WindowManager;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          public class MainActivity extends Activity {
+              private WebView web;
+              @Override protected void onCreate(Bundle b) {
+                  super.onCreate(b);
+                  requestWindowFeature(Window.FEATURE_NO_TITLE);
+                  getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                  web = new WebView(this);
+                  web.setBackgroundColor(Color.parseColor("#171a33"));
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  s.setMediaPlaybackRequiresUserGesture(false);
+                  s.setAllowFileAccess(true);
+                  s.setSupportZoom(false);
+                  web.setOverScrollMode(View.OVER_SCROLL_NEVER);
+                  web.setWebViewClient(new WebViewClient());
+                  web.setWebChromeClient(new WebChromeClient());
+                  setContentView(web);
+                  hideBars();
+                  if (b != null) web.restoreState(b); else web.loadUrl("file:///android_asset/index.html");
+              }
+              private void hideBars() {
+                  if (Build.VERSION.SDK_INT >= 19) getWindow().getDecorView().setSystemUiVisibility(
+                      View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                      | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+              }
+              @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) hideBars(); }
+              @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); web.saveState(o); }
+              @Override protected void onPause() { super.onPause(); web.onPause(); }
+              @Override protected void onResume() { super.onResume(); web.onResume(); }
+              @Override public void onBackPressed() { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
+          }
+          EOF
+      - name: Compilar APK
+        run: cd android-build && gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PorcoAtirador-apk
+          path: android-build/app/build/outputs/apk/debug/app-debug.apk
